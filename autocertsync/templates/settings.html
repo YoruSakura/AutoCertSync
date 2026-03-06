@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}设置 - 自动证书同步{% endblock %}
+{% block content %}
+<h2>设置</h2>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+{% if success %}
+<div class="alert alert-success">{{ success }}</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header"><strong>导出配置</strong></div>
+    <div class="card-body">
+        <p>将当前所有配置（服务器、证书目录、关联关系）导出为 YAML 文件，方便备份和迁移。</p>
+        <a href="/settings/export" class="btn btn-primary">导出 YAML</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><strong>导入配置</strong></div>
+    <div class="card-body">
+        <p>从 YAML 文件导入配置。<strong>注意：导入将覆盖当前所有配置。</strong></p>
+        <form method="POST" action="/settings/import" enctype="multipart/form-data">
+            <div class="form-group">
+                <input type="file" name="file" accept=".yaml,.yml" required>
+            </div>
+            <button type="submit" class="btn btn-danger" onclick="return confirm('导入将覆盖所有现有配置，确认继续？')">导入 YAML</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

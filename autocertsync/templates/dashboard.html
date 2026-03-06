@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - 自动证书同步{% endblock %}
+{% block content %}
+<h2>仪表盘</h2>
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.server_count }}</div>
+        <div class="stat-label">服务器总数</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.enabled_servers }}</div>
+        <div class="stat-label">已启用</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.cert_dir_count }}</div>
+        <div class="stat-label">监听目录</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.rule_count }}</div>
+        <div class="stat-label">部署规则</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ "同步中" if stats.is_syncing else "空闲" }}</div>
+        <div class="stat-label">同步状态</div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-header">
+        <h3>快捷操作</h3>
+    </div>
+    <button class="btn btn-primary" onclick="syncAll()">一键全量同步</button>
+</div>
+
+<div class="section">
+    <h3>最近同步记录</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>服务器</th>
+                <th>状态</th>
+                <th>信息</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in recent_logs %}
+            <tr>
+                <td>{{ log.created_at }}</td>
+                <td>{{ log.server_name or "-" }}</td>
+                <td><span class="badge badge-{{ log.status }}">{{ log.status }}</span></td>
+                <td>{{ log.message or "-" }}</td>
+            </tr>
+            {% endfor %}
+            {% if not recent_logs %}
+            <tr><td colspan="4" class="text-center">暂无同步记录</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function syncAll() {
+    fetch('/sync/all', {method: 'POST'})
+        .then(r => r.json())
+        .then(d => { alert(d.message); location.reload(); })
+        .catch(e => alert('请求失败: ' + e));
+}
+</script>
+{% endblock %}

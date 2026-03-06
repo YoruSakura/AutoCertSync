@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+{% block title %}服务器管理 - 自动证书同步{% endblock %}
+{% block content %}
+<div class="section-header">
+    <h2>服务器管理</h2>
+    <button class="btn btn-primary" onclick="toggleModal('add-server-modal')">添加服务器</button>
+</div>
+
+{% for s in servers %}
+<div class="card">
+    <div class="card-header">
+        <div>
+            <strong>{{ s.name }}</strong>
+            <span class="text-muted">{{ s.host }}:{{ s.port }}</span>
+            <span class="badge badge-{{ 'success' if s.enabled else 'disabled' }}">{{ "启用" if s.enabled else "禁用" }}</span>
+            <span class="text-muted"> | {{ s.auth_type }} / {{ s.username }}</span>
+        </div>
+        <div class="actions">
+            <button class="btn btn-sm" onclick='editServer({{ {"id": s.id, "name": s.name, "host": s.host, "port": s.port, "auth_type": s.auth_type, "username": s.username, "password": s.password, "private_key": s.private_key} | tojson }})'>编辑</button>
+            <form method="POST" action="/servers/{{ s.id }}/toggle" style="display:inline">
+                <button class="btn btn-sm">{{ "禁用" if s.enabled else "启用" }}</button>
+            </form>
+            <button class="btn btn-sm btn-primary" onclick="toggleModal('add-rule-modal-{{ s.id }}')">添加部署规则</button>
+            <form method="POST" action="/servers/{{ s.id }}/delete" style="display:inline" onsubmit="return confirm('删除服务器将同时删除其所有部署规则，确认？')">
+                <button class="btn btn-sm btn-danger">删除</button>
+            </form>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if s.rules %}
+        <table class="table-sm">
+            <thead>
+                <tr>
+                    <th>证书目录</th>
+                    <th>远程路径</th>
+                    <th>部署前命令</th>
+                    <th>部署后命令</th>
+                    <th>证书文件名</th>
+                    <th>密钥文件名</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in s.rules %}
+                <tr>
+                    <td><code>{{ r.cert_dir_path or "已删除" }}</code></td>
+                    <td><code>{{ r.remote_cert_dir }}</code></td>
+                    <td><pre style="margin:0;white-space:pre-wrap">{{ r.pre_deploy_command or "-" }}</pre></td>
+                    <td><pre style="margin:0;white-space:pre-wrap">{{ r.post_deploy_command or "-" }}</pre></td>
+                    <td>{{ r.cert_filename or "fullchain.pem" }}</td>
+                    <td>{{ r.key_filename or "privkey.pem" }}</td>
+                    <td><span class="badge badge-{{ 'success' if r.enabled else 'disabled' }}">{{ "启用" if r.enabled else "禁用" }}</span></td>
+                    <td class="actions">
+                        <button class="btn btn-sm" onclick='editRule({{ {"id": r.id, "cert_dir_id": r.cert_dir_id, "remote_cert_dir": r.remote_cert_dir, "pre_deploy_command": r.pre_deploy_command, "post_deploy_command": r.post_deploy_command, "cert_filename": r.cert_filename, "key_filename": r.key_filename} | tojson }})'>编辑</button>
+                        <form method="POST" action="/servers/rules/{{ r.id }}/toggle" style="display:inline">
+                            <button class="btn btn-sm">{{ "禁用" if r.enabled else "启用" }}</button>
+                        </form>
+                        <form method="POST" action="/servers/rules/{{ r.id }}/delete" style="display:inline" onsubmit="return confirm('确认删除此规则？')">
+                            <button class="btn btn-sm btn-danger">删除</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">暂无部署规则，请点击"添加部署规则"配置证书部署</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 添加部署规则模态框（每台服务器一个） -->
+<div id="add-rule-modal-{{ s.id }}" class="modal" style="display:none">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>添加部署规则 - {{ s.name }}</h3>
+            <button class="modal-close" onclick="toggleModal('add-rule-modal-{{ s.id }}')">&times;</button>
+        </div>
+        <form method="POST" action="/servers/{{ s.id }}/rules/add">
+            <div class="form-group">
+                <label>证书目录</label>
+                <select name="cert_dir_id" required>
+                    {% for cd in cert_dirs %}
+                    <option value="{{ cd.id }}">{{ cd.local_path }}{% if cd.description %} ({{ cd.description }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+                {% if not cert_dirs %}
+                <p class="text-muted">请先在"证书"页面添加证书目录</p>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label>远程证书目录</label>
+                <input type="text" name="remote_cert_dir" required placeholder="/etc/nginx/ssl/example.com">
+            </div>
+            <div class="form-group">
+                <label>部署前命令</label>
+                <textarea name="pre_deploy_command" rows="3" placeholder="证书替换前执行，每行一条命令"></textarea>
+            </div>
+            <div class="form-group">
+                <label>部署后命令</label>
+                <textarea name="post_deploy_command" rows="3" placeholder="证书替换后执行，每行一条命令&#10;例如: systemctl reload nginx"></textarea>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>证书文件名</label>
+                    <input type="text" name="cert_filename" placeholder="留空默认 fullchain.pem">
+                </div>
+                <div class="form-group">
+                    <label>密钥文件名</label>
+                    <input type="text" name="key_filename" placeholder="留空默认 privkey.pem">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">保存</button>
+        </form>
+    </div>
+</div>
+{% endfor %}
+
+{% if not servers %}
+<p class="text-center text-muted">暂无服务器</p>
+{% endif %}
+
+<!-- 添加服务器模态框 -->
+<div id="add-server-modal" class="modal" style="display:none">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>添加服务器</h3>
+            <button class="modal-close" onclick="toggleModal('add-server-modal')">&times;</button>
+        </div>
+        <form method="POST" action="/servers/add">
+            <div class="form-group">
+                <label>名称</label>
+                <input type="text" name="name" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>主机</label>
+                    <input type="text" name="host" required>
+                </div>
+                <div class="form-group">
+                    <label>端口</label>
+                    <input type="number" name="port" value="22">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>认证方式</label>
+                <select name="auth_type" onchange="toggleAuthFields(this, 'add')">
+                    <option value="password">密码</option>
+                    <option value="key">密钥</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" name="username" required>
+            </div>
+            <div class="form-group" id="add-password-field">
+                <label>密码</label>
+                <input type="password" name="password">
+            </div>
+            <div class="form-group" id="add-key-field" style="display:none">
+                <label>私钥</label>
+                <textarea name="private_key" rows="5" placeholder="粘贴 SSH 私钥内容"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">保存</button>
+        </form>
+    </div>
+</div>
+
+<!-- 编辑服务器模态框 -->
+<div id="edit-server-modal" class="modal" style="display:none">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>编辑服务器</h3>
+            <button class="modal-close" onclick="toggleModal('edit-server-modal')">&times;</button>
+        </div>
+        <form id="edit-server-form" method="POST">
+            <div class="form-group">
+                <label>名称</label>
+                <input type="text" name="name" id="edit-name" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>主机</label>
+                    <input type="text" name="host" id="edit-host" required>
+                </div>
+                <div class="form-group">
+                    <label>端口</label>
+                    <input type="number" name="port" id="edit-port">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>认证方式</label>
+                <select name="auth_type" id="edit-auth_type" onchange="toggleAuthFields(this, 'edit')">
+                    <option value="password">密码</option>
+                    <option value="key">密钥</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" name="username" id="edit-username" required>
+            </div>
+            <div class="form-group" id="edit-password-field">
+                <label>密码</label>
+                <input type="password" name="password" id="edit-password">
+            </div>
+            <div class="form-group" id="edit-key-field" style="display:none">
+                <label>私钥</label>
+                <textarea name="private_key" id="edit-private_key" rows="5"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">保存</button>
+        </form>
+    </div>
+</div>
+
+<!-- 编辑规则模态框 -->
+<div id="edit-rule-modal" class="modal" style="display:none">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>编辑部署规则</h3>
+            <button class="modal-close" onclick="toggleModal('edit-rule-modal')">&times;</button>
+        </div>
+        <form id="edit-rule-form" method="POST">
+            <div class="form-group">
+                <label>证书目录</label>
+                <select name="cert_dir_id" id="edit-rule-cert_dir_id">
+                    {% for cd in cert_dirs %}
+                    <option value="{{ cd.id }}">{{ cd.local_path }}{% if cd.description %} ({{ cd.description }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>远程证书目录</label>
+                <input type="text" name="remote_cert_dir" id="edit-rule-remote_cert_dir" required>
+            </div>
+            <div class="form-group">
+                <label>部署前命令</label>
+                <textarea name="pre_deploy_command" id="edit-rule-pre_deploy_command" rows="3" placeholder="证书替换前执行，每行一条命令"></textarea>
+            </div>
+            <div class="form-group">
+                <label>部署后命令</label>
+                <textarea name="post_deploy_command" id="edit-rule-post_deploy_command" rows="3" placeholder="证书替换后执行，每行一条命令"></textarea>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>证书文件名</label>
+                    <input type="text" name="cert_filename" id="edit-rule-cert_filename" placeholder="留空默认 fullchain.pem">
+                </div>
+                <div class="form-group">
+                    <label>密钥文件名</label>
+                    <input type="text" name="key_filename" id="edit-rule-key_filename" placeholder="留空默认 privkey.pem">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">保存</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function toggleModal(id) {
+    const m = document.getElementById(id);
+    m.style.display = m.style.display === 'none' ? 'flex' : 'none';
+}
+function toggleAuthFields(sel, prefix) {
+    const isPw = sel.value === 'password';
+    document.getElementById(prefix + '-password-field').style.display = isPw ? '' : 'none';
+    document.getElementById(prefix + '-key-field').style.display = isPw ? 'none' : '';
+}
+function editServer(s) {
+    document.getElementById('edit-server-form').action = '/servers/' + s.id + '/edit';
+    document.getElementById('edit-name').value = s.name;
+    document.getElementById('edit-host').value = s.host;
+    document.getElementById('edit-port').value = s.port;
+    document.getElementById('edit-auth_type').value = s.auth_type;
+    document.getElementById('edit-username').value = s.username;
+    document.getElementById('edit-password').value = s.password || '';
+    document.getElementById('edit-private_key').value = s.private_key || '';
+    toggleAuthFields(document.getElementById('edit-auth_type'), 'edit');
+    toggleModal('edit-server-modal');
+}
+function editRule(r) {
+    document.getElementById('edit-rule-form').action = '/servers/rules/' + r.id + '/edit';
+    document.getElementById('edit-rule-cert_dir_id').value = r.cert_dir_id;
+    document.getElementById('edit-rule-remote_cert_dir').value = r.remote_cert_dir;
+    document.getElementById('edit-rule-pre_deploy_command').value = r.pre_deploy_command || '';
+    document.getElementById('edit-rule-post_deploy_command').value = r.post_deploy_command || '';
+    document.getElementById('edit-rule-cert_filename').value = r.cert_filename || '';
+    document.getElementById('edit-rule-key_filename').value = r.key_filename || '';
+    toggleModal('edit-rule-modal');
+}
+</script>
+{% endblock %}

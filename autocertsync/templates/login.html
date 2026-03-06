@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}登录 - 自动证书同步{% endblock %}
+{% block content %}
+<div class="login-container">
+    <h1>自动证书同步</h1>
+    <p class="subtitle">SSL/TLS 证书自动同步工具</p>
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+    <form method="POST" action="/login">
+        <div class="form-group">
+            <label for="username">用户名</label>
+            <input type="text" id="username" name="username" required autofocus>
+        </div>
+        <div class="form-group">
+            <label for="password">密码</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">登录</button>
+    </form>
+</div>
+{% endblock %}

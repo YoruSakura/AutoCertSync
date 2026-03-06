@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}同步日志 - 自动证书同步{% endblock %}
+{% block content %}
+<h2>同步日志</h2>
+
+<div class="section">
+    <h3>日志显示 <button class="btn btn-sm" onclick="loadLog()">刷新</button></h3>
+    <div id="log-view" class="log-container">
+        <p class="text-muted">加载中...</p>
+    </div>
+</div>
+
+<div class="section">
+    <h3>历史同步记录</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>服务器</th>
+                <th>状态</th>
+                <th>信息</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.created_at }}</td>
+                <td>{{ log.server_name or "-" }}</td>
+                <td><span class="badge badge-{{ log.status }}">{{ log.status }}</span></td>
+                <td style="white-space: pre-wrap;">{{ log.message or "-" }}</td>
+            </tr>
+            {% endfor %}
+            {% if not logs %}
+            <tr><td colspan="4" class="text-center">暂无记录</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const logEl = document.getElementById('log-view');
+function loadLog() {
+    fetch('/logs/content')
+        .then(r => r.text())
+        .then(text => {
+            if (text.trim()) {
+                logEl.innerHTML = '';
+                text.split('\n').forEach(line => {
+                    if (!line.trim()) return;
+                    const div = document.createElement('div');
+                    div.className = 'log-line';
+                    div.textContent = line;
+                    logEl.appendChild(div);
+                });
+            } else {
+                logEl.innerHTML = '<p class="text-muted">暂无日志</p>';
+            }
+            logEl.scrollTop = logEl.scrollHeight;
+        })
+        .catch(() => {
+            logEl.innerHTML = '<p class="text-muted">加载失败</p>';
+        });
+}
+loadLog();
+</script>
+{% endblock %}
