@@ -7,7 +7,7 @@
 
 AutoCertSync 是一款自动化 SSL/TLS 证书同步部署工具。
 
-当 [ohttps](https://ohttps.com) 平台将证书推送到中心服务器后，AutoCertSync 会**自动检测证书文件变动**，并将新证书**同步部署到各子服务器**，执行指定的部署命令（如 `systemctl reload nginx`），实现证书的全自动分发与更新。
+当中心服务器上的证书发生更新后，AutoCertSync 会**自动检测证书文件变动**，并将新证书**同步部署到各子服务器**，执行指定的部署命令（如 `systemctl reload nginx`），实现证书的全自动分发与更新。
 
 ### ✨ 核心特性
 
@@ -27,7 +27,7 @@ AutoCertSync 是一款自动化 SSL/TLS 证书同步部署工具。
 ## 🏗️ 工作流程
 
 ```
-ohttps 推送证书 → 中心服务器本地目录 → AutoCertSync 检测变动
+证书更新写入中心服务器本地目录 → AutoCertSync 检测变动
     → 上传至子服务器 /tmp/autocertsync/
     → openssl 校验哈希 & 有效期
     → 替换目标路径证书文件
@@ -194,7 +194,7 @@ mysql -e "CREATE DATABASE autocertsync CHARACTER SET utf8mb4;"
 
 ## 📄 文件名映射
 
-ohttps 推送的证书文件名会自动重命名：
+上游系统推送的常见证书文件名会自动重命名：
 
 | 源文件名 | 默认目标文件名 |
 |----------|----------------|
