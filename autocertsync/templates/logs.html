@@ -17,6 +17,7 @@
             <tr>
                 <th>时间</th>
                 <th>服务器</th>
+                <th>远程路径</th>
                 <th>状态</th>
                 <th>信息</th>
             </tr>
@@ -26,12 +27,13 @@
             <tr>
                 <td>{{ log.created_at }}</td>
                 <td>{{ log.server_name or "-" }}</td>
+                <td>{{ log.remote_cert_dir or "-" }}</td>
                 <td><span class="badge badge-{{ log.status }}">{{ log.status }}</span></td>
                 <td style="white-space: pre-wrap;">{{ log.message or "-" }}</td>
             </tr>
             {% endfor %}
             {% if not logs %}
-            <tr><td colspan="4" class="text-center">暂无记录</td></tr>
+            <tr><td colspan="5" class="text-center">暂无记录</td></tr>
             {% endif %}
         </tbody>
     </table>
@@ -40,6 +42,15 @@
 {% block scripts %}
 <script>
 const logEl = document.getElementById('log-view');
+let autoScroll = true;
+let refreshTimer = null;
+
+// 检测用户是否滚动到底部附近（20px 容差）
+logEl.addEventListener('scroll', function() {
+    const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 20;
+    autoScroll = atBottom;
+});
+
 function loadLog() {
     fetch('/logs/content')
         .then(r => r.text())
@@ -56,12 +67,16 @@ function loadLog() {
             } else {
                 logEl.innerHTML = '<p class="text-muted">暂无日志</p>';
             }
-            logEl.scrollTop = logEl.scrollHeight;
+            if (autoScroll) {
+                logEl.scrollTop = logEl.scrollHeight;
+            }
         })
         .catch(() => {
             logEl.innerHTML = '<p class="text-muted">加载失败</p>';
         });
 }
+
 loadLog();
+refreshTimer = setInterval(loadLog, 5000);
 </script>
 {% endblock %}

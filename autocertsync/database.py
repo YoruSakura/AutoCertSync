@@ -1,4 +1,4 @@
-"""SQLite 数据模块 - 表结构定义与 CRUD 操作"""
+"""数据模块 - 支持 SQLite 和 MySQL 双后端"""
 
 import sqlite3
 from datetime import datetime
@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 
-SCHEMA_SQL = """
+SCHEMA_SQL_SQLITE = """
 CREATE TABLE IF NOT EXISTS servers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -58,29 +58,144 @@ CREATE TABLE IF NOT EXISTS sync_logs (
 );
 """
 
+SCHEMA_SQL_MYSQL = [
+    """CREATE TABLE IF NOT EXISTS servers (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    host VARCHAR(255) NOT NULL,
+    port INT NOT NULL DEFAULT 22,
+    auth_type VARCHAR(50) NOT NULL DEFAULT 'password',
+    username VARCHAR(255) NOT NULL,
+    password TEXT,
+    private_key TEXT,
+    enabled INT NOT NULL DEFAULT 1,
+    created_at VARCHAR(30) NOT NULL,
+    updated_at VARCHAR(30) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS cert_dirs (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    local_path VARCHAR(512) NOT NULL UNIQUE,
+    description TEXT,
+    enabled INT NOT NULL DEFAULT 1,
+    created_at VARCHAR(30) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS deploy_rules (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    server_id INT NOT NULL,
+    cert_dir_id INT NOT NULL,
+    remote_cert_dir VARCHAR(512) NOT NULL,
+    pre_deploy_command TEXT,
+    post_deploy_command TEXT,
+    cert_filename VARCHAR(255),
+    key_filename VARCHAR(255),
+    enabled INT NOT NULL DEFAULT 1,
+    created_at VARCHAR(30) NOT NULL,
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE,
+    FOREIGN KEY (cert_dir_id) REFERENCES cert_dirs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS sync_logs (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    server_id INT,
+    cert_dir_id INT,
+    deploy_rule_id INT,
+    status VARCHAR(50) NOT NULL,
+    message TEXT,
+    created_at VARCHAR(30) NOT NULL,
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE SET NULL,
+    FOREIGN KEY (cert_dir_id) REFERENCES cert_dirs(id) ON DELETE SET NULL,
+    FOREIGN KEY (deploy_rule_id) REFERENCES deploy_rules(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+]
+
 # ohttps 默认文件名 -> NGINX 默认文件名
 DEFAULT_CERT_FILENAME = "fullchain.pem"
 DEFAULT_KEY_FILENAME = "privkey.pem"
 
 
-class Database:
-    """SQLite 数据库管理器"""
+class _Connection:
+    """统一 SQLite/MySQL 连接接口"""
 
-    def __init__(self, db_path: str):
+    def __init__(self, conn, db_type):
+        self._conn = conn
+        self._db_type = db_type
+
+    def execute(self, sql, params=None):
+        if self._db_type == 'mysql':
+            sql = sql.replace('?', '%s')
+            cursor = self._conn.cursor()
+            cursor.execute(sql, params or ())
+            return cursor
+        return self._conn.execute(sql, params or ())
+
+    def executescript(self, sql):
+        """执行多条 SQL（仅 SQLite 使用）"""
+        self._conn.executescript(sql)
+
+    def execute_many(self, statements):
+        """逐条执行 SQL 列表（MySQL 建表用）"""
+        cursor = self._conn.cursor()
+        for stmt in statements:
+            cursor.execute(stmt)
+        self._conn.commit()
+        cursor.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self._conn.commit()
+        else:
+            self._conn.rollback()
+        if self._db_type == 'mysql':
+            self._conn.close()
+
+
+class Database:
+    """数据库管理器 - 支持 SQLite 和 MySQL"""
+
+    def __init__(self, db_type='sqlite', db_path=None,
+                 db_host=None, db_port=None, db_user=None,
+                 db_password=None, db_name=None):
+        self.db_type = db_type
         self.db_path = db_path
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        self.db_host = db_host
+        self.db_port = db_port or 3306
+        self.db_user = db_user
+        self.db_password = db_password
+        self.db_name = db_name
+
+        if db_type == 'sqlite' and db_path:
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
-    def _get_conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA journal_mode = WAL")
-        return conn
+    def _get_conn(self) -> _Connection:
+        if self.db_type == 'mysql':
+            import pymysql
+            import pymysql.cursors
+            conn = pymysql.connect(
+                host=self.db_host,
+                port=self.db_port,
+                user=self.db_user,
+                password=self.db_password,
+                database=self.db_name,
+                cursorclass=pymysql.cursors.DictCursor,
+                charset='utf8mb4',
+            )
+            return _Connection(conn, 'mysql')
+        else:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute("PRAGMA journal_mode = WAL")
+            return _Connection(conn, 'sqlite')
 
     def _init_db(self):
-        with self._get_conn() as conn:
-            conn.executescript(SCHEMA_SQL)
+        conn = self._get_conn()
+        if self.db_type == 'mysql':
+            conn.execute_many(SCHEMA_SQL_MYSQL)
+        else:
+            conn.executescript(SCHEMA_SQL_SQLITE)
 
     def _now(self) -> str:
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -272,9 +387,11 @@ class Database:
             params.append(cert_dir_id)
 
         sql = (
-            "SELECT l.*, s.name AS server_name, s.host AS server_host "
+            "SELECT l.*, s.name AS server_name, s.host AS server_host, "
+            "r.remote_cert_dir "
             "FROM sync_logs l "
-            "LEFT JOIN servers s ON l.server_id = s.id"
+            "LEFT JOIN servers s ON l.server_id = s.id "
+            "LEFT JOIN deploy_rules r ON l.deploy_rule_id = r.id"
         )
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
@@ -286,11 +403,18 @@ class Database:
 
     def clear_sync_logs(self, keep_recent: int = 20):
         with self._get_conn() as conn:
-            conn.execute(
-                "DELETE FROM sync_logs WHERE id NOT IN "
-                "(SELECT id FROM sync_logs ORDER BY id DESC LIMIT ?)",
-                (keep_recent,)
-            )
+            if self.db_type == 'mysql':
+                conn.execute(
+                    "DELETE FROM sync_logs WHERE id NOT IN "
+                    "(SELECT id FROM (SELECT id FROM sync_logs ORDER BY id DESC LIMIT ?) AS t)",
+                    (keep_recent,)
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM sync_logs WHERE id NOT IN "
+                    "(SELECT id FROM sync_logs ORDER BY id DESC LIMIT ?)",
+                    (keep_recent,)
+                )
 
     # ========== 导入导出 ==========
 

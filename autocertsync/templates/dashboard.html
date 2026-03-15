@@ -39,6 +39,7 @@
             <tr>
                 <th>时间</th>
                 <th>服务器</th>
+                <th>远程路径</th>
                 <th>状态</th>
                 <th>信息</th>
             </tr>
@@ -48,12 +49,13 @@
             <tr>
                 <td>{{ log.created_at }}</td>
                 <td>{{ log.server_name or "-" }}</td>
+                <td>{{ log.remote_cert_dir or "-" }}</td>
                 <td><span class="badge badge-{{ log.status }}">{{ log.status }}</span></td>
                 <td>{{ log.message or "-" }}</td>
             </tr>
             {% endfor %}
             {% if not recent_logs %}
-            <tr><td colspan="4" class="text-center">暂无同步记录</td></tr>
+            <tr><td colspan="5" class="text-center">暂无同步记录</td></tr>
             {% endif %}
         </tbody>
     </table>

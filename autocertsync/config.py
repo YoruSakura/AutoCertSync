@@ -10,7 +10,13 @@ DEFAULT_CONFIG = {
         "port": "8443",
     },
     "database": {
+        "type": "sqlite",
         "path": "./data/autocertsync.db",
+        "host": "localhost",
+        "port": "3306",
+        "username": "autocertsync",
+        "password": "",
+        "name": "autocertsync",
     },
     "log": {
         "level": "INFO",
@@ -66,8 +72,32 @@ class AppConfig:
         return self._config.getint("server", "port", fallback=8443)
 
     @property
+    def db_type(self) -> str:
+        return self._config.get("database", "type", fallback="sqlite")
+
+    @property
     def db_path(self) -> str:
         return self._config.get("database", "path", fallback="./data/autocertsync.db")
+
+    @property
+    def db_host(self) -> str:
+        return self._config.get("database", "host", fallback="localhost")
+
+    @property
+    def db_port(self) -> int:
+        return self._config.getint("database", "port", fallback=3306)
+
+    @property
+    def db_user(self) -> str:
+        return self._config.get("database", "username", fallback="autocertsync")
+
+    @property
+    def db_password(self) -> str:
+        return self._config.get("database", "password", fallback="")
+
+    @property
+    def db_name(self) -> str:
+        return self._config.get("database", "name", fallback="autocertsync")
 
     @property
     def log_level(self) -> str:

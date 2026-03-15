@@ -44,8 +44,17 @@ def main():
     logger.info("AutoCertSync 启动中...")
 
     # 初始化数据库
-    db = Database(config.db_path)
-    logger.info(f"数据库已加载: {config.db_path}")
+    db = Database(
+        db_type=config.db_type,
+        db_path=config.db_path,
+        db_host=config.db_host,
+        db_port=config.db_port,
+        db_user=config.db_user,
+        db_password=config.db_password,
+        db_name=config.db_name,
+    )
+    logger.info(f"数据库已加载: {config.db_type}"
+                f"{(' - ' + config.db_path) if config.db_type == 'sqlite' else ''}")
 
     # 初始化同步引擎
     engine = SyncEngine(db, config.retry_count, config.retry_interval)
